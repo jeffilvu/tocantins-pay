@@ -32,6 +32,7 @@ export const api = {
     body: JSON.stringify(cliente),
   }),
   buscarClientes: () => request('/api/Cliente'),
+  buscarCarteira: (carteiraId) => request(`/api/Carteira/${carteiraId}`),
   depositar: (transacao) => request('/api/Transacao/deposito', {
     method: 'POST',
     body: JSON.stringify(transacao),

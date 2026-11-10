@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { api, API_URL } from './api'
 
 const initialClient = {
@@ -20,8 +20,19 @@ function App() {
   const [client, setClient] = useState(initialClient)
   const [clients, setClients] = useState([])
   const [transaction, setTransaction] = useState(initialTransaction)
+  const [selectedWallet, setSelectedWallet] = useState(null)
+  const [darkMode, setDarkMode] = useState(() => localStorage.getItem('tocantins-theme') === 'dark')
   const [loading, setLoading] = useState(false)
   const [feedback, setFeedback] = useState(null)
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = darkMode ? 'dark' : 'light'
+    localStorage.setItem('tocantins-theme', darkMode ? 'dark' : 'light')
+  }, [darkMode])
+
+  useEffect(() => {
+    loadClients()
+  }, [])
 
   function updateClient(event) {
     setClient({ ...client, [event.target.name]: event.target.value })
@@ -47,12 +58,22 @@ function App() {
     }
   }
 
-  function selectWallet(walletId) {
+  async function selectWallet(walletId) {
     setTransaction((currentTransaction) => ({
       ...currentTransaction,
       carteiraId: walletId,
     }))
-    setFeedback({ type: 'success', text: 'Carteira selecionada para a próxima operação.' })
+    setLoading(true)
+    setFeedback(null)
+    try {
+      const wallet = await api.buscarCarteira(walletId)
+      setSelectedWallet(wallet)
+      setFeedback({ type: 'success', text: 'Carteira selecionada e saldo atualizado.' })
+    } catch (error) {
+      setFeedback({ type: 'error', text: error.message })
+    } finally {
+      setLoading(false)
+    }
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
@@ -81,7 +102,10 @@ function App() {
       const result = type === 'deposito'
         ? await api.depositar(payload)
         : await api.debitar(payload)
-      setTransaction(initialTransaction)
+      setSelectedWallet((currentWallet) => currentWallet
+        ? { ...currentWallet, saldo: result }
+        : currentWallet)
+      setTransaction((currentTransaction) => ({ ...initialTransaction, carteiraId: currentTransaction.carteiraId }))
       setFeedback({ type: 'success', text: `${type === 'deposito' ? 'Depósito' : 'Débito'} realizado. Saldo resultante: ${result}` })
     } catch (error) {
       setFeedback({ type: 'error', text: error.message })
@@ -98,9 +122,14 @@ function App() {
           <h1>Controle financeiro simples e seguro.</h1>
           <p>Cadastre clientes e teste as operações da API em uma interface única.</p>
         </div>
-        <a className="swagger-link" href={`${API_URL}/swagger`} target="_blank" rel="noreferrer">
-          Abrir Swagger ↗
-        </a>
+        <div className="hero-actions">
+          <a className="swagger-link" href={`${API_URL}/swagger`} target="_blank" rel="noreferrer">
+            Abrir Swagger ↗
+          </a>
+          <button type="button" className="theme-toggle" onClick={() => setDarkMode((current) => !current)}>
+            {darkMode ? '☀️ Modo claro' : '🌙 Modo escuro'}
+          </button>
+        </div>
       </header>
 
       {feedback && <div className={`feedback ${feedback.type}`}>{feedback.text}</div>}
@@ -131,7 +160,13 @@ function App() {
             <div><span className="section-label">02</span><h2>Movimentar carteira</h2></div>
             <span className="badge secondary">POST</span>
           </div>
-          <p className="helper">O cadastro cria uma carteira. Informe o <strong>carteiraId</strong> retornado ou consultado no banco.</p>
+          {selectedWallet && (
+            <div className="wallet-summary">
+              <span>Saldo atual</span>
+              <strong>R$ {Number(selectedWallet.saldo).toFixed(2).replace('.', ',')}</strong>
+              <small>Agência {selectedWallet.agencia} · Conta {selectedWallet.conta}</small>
+            </div>
+          )}
           <form onSubmit={(event) => event.preventDefault()}>
             <label>ID da carteira<input name="carteiraId" value={transaction.carteiraId} onChange={updateTransaction} placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" required /></label>
             <div className="two-columns">
@@ -153,7 +188,7 @@ function App() {
         </div>
         {clients.length === 0 ? <p className="empty">Clique em “Atualizar lista” para consultar os clientes cadastrados.</p> : (
           <div className="table-wrap"><table><thead><tr><th>Nome</th><th>Data de nascimento</th><th>ID do cliente</th><th>ID da carteira</th><th></th></tr></thead><tbody>
-            {clients.map((item) => <tr key={item.id}><td>{item.nomeCompleto}</td><td>{item.dataNascimento}</td><td className="id-cell">{item.id}</td><td className="id-cell">{item.carteiraId}</td><td><button type="button" className="outline compact" onClick={() => selectWallet(item.carteiraId)}>Usar carteira</button></td></tr>)}
+            {clients.map((item) => <tr key={item.id}><td>{item.nomeCompleto}</td><td>{item.dataNascimento}</td><td className="id-cell">{item.id}</td><td className="id-cell">{item.carteiraId}</td><td><button type="button" className="outline compact" onClick={() => selectWallet(item.carteiraId)} disabled={loading}>Ver saldo</button></td></tr>)}
           </tbody></table></div>
         )}
       </section>
